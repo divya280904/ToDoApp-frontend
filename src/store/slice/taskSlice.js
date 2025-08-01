@@ -1,6 +1,27 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
+// Improved helper to get JWT token from localStorage
+const getAuthHeaders = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (user && user.token) {
+      return {
+        headers: {
+          Authorization: `Bearer ${user.token}`,
+        },
+        withCredentials: true,
+      };
+    } else {
+      console.warn("User token not found in localStorage.");
+      return { withCredentials: true };
+    }
+  } catch (error) {
+    console.error("Error parsing user from localStorage:", error);
+    return { withCredentials: true };
+  }
+};
+
 // Initial state
 const initialState = {
   tasks: [],
@@ -8,96 +29,98 @@ const initialState = {
   error: null,
 };
 
-// Fetch tasks from backend
-export const fetchTasks = createAsyncThunk("tasks/fetchTasks", async () => {
-  const { data } = await axios.get(
-    `${import.meta.env.VITE_BACKEND_URL}/api/tasks`,
-    {
-      withCredentials: true,
-    }
-  );
-  return data;
+// Fetch tasks
+export const fetchTasks = createAsyncThunk("tasks/fetchTasks", async (_, thunkAPI) => {
+  try {
+    const response = await axios.get(
+      `${import.meta.env.VITE_BACKEND_URL}/api/tasks`,
+      getAuthHeaders()
+    );
+    return response.data;
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || "Failed to fetch tasks");
+  }
 });
 
-// Create a new task
-export const createTask = createAsyncThunk(
-  "tasks/createTask",
-  async (taskData, thunkAPI) => {
-    try {
-      console.log("Creating task with:", taskData);
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_BACKEND_URL}/api/tasks`,
-        taskData,
-        {
-          withCredentials: true,
-        }
-      );
-      return data;
-    } catch (error) {
-      console.error(
-        "Create Task Error:",
-        error.response?.data || error.message
-      );
-      return thunkAPI.rejectWithValue(
-        error.response?.data || "Create task failed"
-      );
-    }
+// Create task
+export const createTask = createAsyncThunk("tasks/createTask", async (taskData, thunkAPI) => {
+  try {
+    const response = await axios.post(
+      `${import.meta.env.VITE_BACKEND_URL}/api/tasks`,
+      taskData,
+      getAuthHeaders()
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Create Task Error:", error.response?.data || error.message);
+    return thunkAPI.rejectWithValue(error.response?.data || "Create task failed");
   }
-);
+});
 
-// Update an existing task
+// Update task
 export const updateTask = createAsyncThunk(
   "tasks/updateTask",
-  async ({ id, task }) => {
-    const updatedTask = { ...task, status: task.status };
-    const { data } = await axios.put(
-      `${import.meta.env.VITE_BACKEND_URL}/api/tasks/${id}`,
-      updatedTask,
-      { withCredentials: true }
-    );
-    return data;
+  async ({ id, task }, thunkAPI) => {
+    try {
+      const response = await axios.put(
+        `${import.meta.env.VITE_BACKEND_URL}/api/tasks/${id}`,
+        task,
+        getAuthHeaders()
+      );
+      return response.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error.response?.data || "Update task failed");
+    }
   }
 );
 
-// Delete a task
-export const deleteTask = createAsyncThunk("tasks/deleteTask", async (id) => {
-  await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/api/tasks/${id}`, {
-    withCredentials: true,
-  });
-  return id;
+// Delete task
+export const deleteTask = createAsyncThunk("tasks/deleteTask", async (id, thunkAPI) => {
+  try {
+    await axios.delete(`${import.meta.env.VITE_BACKEND_URL}/api/tasks/${id}`, getAuthHeaders());
+    return id;
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || "Delete task failed");
+  }
 });
 
+// Task slice
 const taskSlice = createSlice({
   name: "tasks",
   initialState,
   reducers: {},
   extraReducers: (builder) => {
     builder
+      // Fetch
       .addCase(fetchTasks.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchTasks.fulfilled, (state, action) => {
         state.loading = false;
-        state.tasks = action.payload || [];
+        state.tasks = action.payload;
       })
       .addCase(fetchTasks.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || "Failed to fetch tasks";
+        state.error = action.payload;
       })
+
+      // Create
       .addCase(createTask.fulfilled, (state, action) => {
         state.tasks.push(action.payload);
       })
+
+      // Update
       .addCase(updateTask.fulfilled, (state, action) => {
-        const index = state.tasks.findIndex(
-          (task) => task._id === action.payload._id
-        );
+        const index = state.tasks.findIndex(task => task._id === action.payload._id);
         if (index !== -1) {
           state.tasks[index] = action.payload;
         }
       })
+
+      // Delete
       .addCase(deleteTask.fulfilled, (state, action) => {
-        state.tasks = state.tasks.filter((task) => task._id !== action.payload);
+        state.tasks = state.tasks.filter(task => task._id !== action.payload);
       });
   },
 });

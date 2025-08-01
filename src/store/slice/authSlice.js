@@ -8,8 +8,9 @@ const initialState = {
   error: null,
 };
 
-// Async actions
+// Async Thunks
 
+// LOGIN
 export const login = createAsyncThunk(
   'auth/login',
   async ({ email, password }) => {
@@ -19,11 +20,13 @@ export const login = createAsyncThunk(
       { withCredentials: true }
     );
 
-    localStorage.setItem('user', JSON.stringify(data));
-    return data;
+    const userWithToken = { ...data.user, token: data.token };
+    localStorage.setItem('user', JSON.stringify(userWithToken));
+    return userWithToken;
   }
 );
 
+// REGISTER
 export const register = createAsyncThunk(
   'auth/register',
   async ({ name, email, password }) => {
@@ -33,27 +36,38 @@ export const register = createAsyncThunk(
       { withCredentials: true }
     );
 
-    localStorage.setItem('user', JSON.stringify(data));
-    return data;
+    const userWithToken = { ...data.user, token: data.token };
+    localStorage.setItem('user', JSON.stringify(userWithToken));
+    return userWithToken;
   }
 );
 
+// LOGOUT
 export const logout = createAsyncThunk('auth/logout', async () => {
   await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/users/logout`, {}, { withCredentials: true });
   localStorage.removeItem('user');
 });
 
+// UPDATE PROFILE
 export const updateProfile = createAsyncThunk(
   'auth/updateProfile',
   async ({ name, currentPassword, newPassword }) => {
+    const user = JSON.parse(localStorage.getItem('user'));
+
     const { data } = await axios.put(
       `${import.meta.env.VITE_BACKEND_URL}/api/users/profile`,
       { name, currentPassword, newPassword },
-      { withCredentials: true }
+      {
+        headers: {
+          Authorization: `Bearer ${user?.token}`,
+        },
+        withCredentials: true,
+      }
     );
 
-    localStorage.setItem('user', JSON.stringify(data));
-    return data;
+    const updatedUser = { ...data, token: user.token };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    return updatedUser;
   }
 );
 
@@ -64,6 +78,7 @@ const authSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
+      // Login
       .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -76,6 +91,8 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.error.message || 'Login failed';
       })
+
+      // Register
       .addCase(register.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -88,9 +105,13 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.error.message || 'Registration failed';
       })
+
+      // Logout
       .addCase(logout.fulfilled, (state) => {
         state.user = null;
       })
+
+      // Update Profile
       .addCase(updateProfile.pending, (state) => {
         state.loading = true;
         state.error = null;
